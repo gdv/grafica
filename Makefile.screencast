@@ -1,0 +1,89 @@
+# This makefile produces the files final-??.mkv starting from the video-?? and
+# audio-?? files produced by the screencast programs
+#
+###################################################################################
+
+raws=$(wildcard video-??.mkv)
+targets=$(subst video-,final-,$(raws))
+titles=$(subst .mkv,.txt, $(subst video-,title-,$(raws)) $(subst video-,goals-,$(raws)))
+PRG=ffmpeg -y -probesize 100M 
+#-loglevel verbose
+.SECONDARY:
+.SUFFIXES:
+
+#  The final video has the following sequence:
+#  1. title, with fade-out only
+#  2. goals, with fade in and fade out. It contains the learning objectives
+#  3. the actual lecture
+#  4. goals again
+#  5. outro. It is the title, with fade in and fade out
+#  
+#  All videos have the same encoding: video x264, audio libopus.
+#  Resolution is 1920x1080.
+#  This allows the final video to be a simple concatenation, without
+#  re-encoding
+
+
+finals: $(targets)
+	@echo "Total duration: "
+	@../total-duration.sh
+
+obs-audio-%.m4a: obs-audio-%.mkv
+	$(PRG) -i $< -vn -acodec copy $@
+
+final-%.mkv: files-%.txt title-%.mkv  goals-%.mkv  cut-%.mkv outro-%.mkv
+	$(PRG) -f concat -i $< -c copy $@
+#	$(PRG) -i title-$*.mkv -i goals-$*.mkv -i cut-$*.mkv -i goals-$*.mkv -i title-$*.mkv -filter_complex "concat=n=5:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -crf 18 -c:a libopus -b:a 256k -threads 4 $@
+
+edit-%.mkv: Screen_Recording-%.mp4
+	$(PRG) -i $< -map 0 -map_metadata 0 -map_chapters 0 -ignore_unknown -filter:v scale=in_range=limited:out_range=limited:flags=neighbor+accurate_rnd+full_chroma_inp+full_chroma_int -filter:a aresample=async=1:min_comp=0.001:min_hard_comp=0.1:first_pts=0 -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range mpeg -vsync cfr -r 25 -c:v libx264 -qp 15 -g 4 -bf 0 -preset medium -movflags +faststart+write_colr -c:a libopus -b:a 640k -max_muxing_queue_size 99999 $@
+
+cropped-%.mkv: edit-%.mkv
+	$(PRG) -i $< -filter:v "crop=1290:920:218:180" -vcodec libx264 -c:a copy  $@
+
+rescaled-%.mkv: cropped-%.mkv
+	$(PRG) -i $< -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1" -vcodec libx264rgb -acodec copy $@
+
+cut-%.mkv: video-%.mkv clean-%.opus
+	$(PRG) -i $(word 1,$^) -i $(word 2,$^) -c copy $@
+
+title-%.png: title-%.txt ../title-screen.png
+	ffmpeg -y  -i ../title-screen.png -vf "\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=144:fontcolor=white:x=50:y=50:textfile='$<',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=850:text='Gianluca Della Vedova',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=950:text='University of Milano-Bicocca',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=700:text='GENOME ASSEMBLY AND BEYOND (Master qOmics)'" $@
+
+title-%.mkv:  title-%.png
+	$(PRG) -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -loop 1 -i $< -t 4 -vf "fade=t=out:st=3:d=1,format=gbrp" -r 25 -vcodec libx264rgb -acodec libopus -b:a 256k $@
+
+outro-%.mkv:  title-%.png
+	$(PRG) -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -loop 1 -i $< -t 5 -vf "fade=t=in:0:d=1,fade=t=out:st=4:d=1,format=gbrp" -r 25 -vcodec libx264rgb -acodec libopus -b:a 256k $@
+
+goals-%.png: goals-%.txt ../goals-screen.png
+	ffmpeg -y  -i ../title-screen.png -vf "\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=120:fontcolor=white:x=(w-text_w)/2:y=120:text='Learning Objectives',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=850:text='Gianluca Della Vedova',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=950:text='Università di Milano - Bicocca',\
+	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=71:fontcolor=white:x=50:y=330:textfile='$<'" $@
+
+
+goals-%.mkv:  goals-%.png
+	$(PRG) -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -loop 1 -i $< -t 5 -vf "fade=t=in:0:d=1,fade=t=out:st=3:d=1,format=gbrp" -r 25 -vcodec libx264rgb -acodec libopus -b:a 256k $@
+
+clean-%.opus: audio-%.opus
+	$(PRG) -i $< -af "afftdn=nr=12:nf=-80:tn=1" -acodec libopus $@
+
+files-%.txt: title-%.mkv  goals-%.mkv  cut-%.mkv outro-%.mkv
+	echo "" > $@
+	echo "file '$(word 1,$^)'" >> $@
+	echo "file '$(word 2,$^)'" >> $@
+	echo "file '$(word 3,$^)'" >> $@
+	echo "file '$(word 2,$^)'" >> $@
+	echo "file '$(word 4,$^)'" >> $@
+
+titles: $(titles)
+
+print-%  : ; @echo $* = $($*)
+
+# -*- mode: GNUmakefile;-*-
