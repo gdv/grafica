@@ -33,19 +33,9 @@ obs-audio-%.m4a: obs-audio-%.mkv
 
 final-%.mkv: files-%.txt title-%.mkv  goals-%.mkv  cut-%.mkv outro-%.mkv
 	$(PRG) -f concat -i $< -c copy $@
-#	$(PRG) -i title-$*.mkv -i goals-$*.mkv -i cut-$*.mkv -i goals-$*.mkv -i title-$*.mkv -filter_complex "concat=n=5:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -crf 18 -c:a libopus -b:a 256k -threads 4 $@
 
-edit-%.mkv: Screen_Recording-%.mp4
-	$(PRG) -i $< -map 0 -map_metadata 0 -map_chapters 0 -ignore_unknown -filter:v scale=in_range=limited:out_range=limited:flags=neighbor+accurate_rnd+full_chroma_inp+full_chroma_int -filter:a aresample=async=1:min_comp=0.001:min_hard_comp=0.1:first_pts=0 -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range mpeg -vsync cfr -r 25 -c:v libx264 -qp 15 -g 4 -bf 0 -preset medium -movflags +faststart+write_colr -c:a libopus -b:a 640k -max_muxing_queue_size 99999 $@
-
-cropped-%.mkv: edit-%.mkv
-	$(PRG) -i $< -filter:v "crop=1290:920:218:180" -vcodec libx264 -c:a copy  $@
-
-rescaled-%.mkv: cropped-%.mkv
-	$(PRG) -i $< -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1" -vcodec libx264rgb -acodec copy $@
-
-cut-%.mkv: video-%.mkv clean-%.opus
-	$(PRG) -i $(word 1,$^) -i $(word 2,$^) -c copy $@
+clean-%.mkv: record-%.mkv
+	$(PRG) -i $< -af "afftdn=nr=12:nf=-80:tn=1" -acodec libopus -vcodec copy $@
 
 title-%.png: title-%.txt ../title-screen.png
 	ffmpeg -y  -i ../title-screen.png -vf "\
@@ -67,14 +57,10 @@ goals-%.png: goals-%.txt ../goals-screen.png
 	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=72:fontcolor=white:x=50:y=950:text='Università di Milano - Bicocca',\
 	drawtext=fontfile=/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Medium.ttf:fontsize=71:fontcolor=white:x=50:y=330:textfile='$<'" $@
 
-
 goals-%.mkv:  goals-%.png
 	$(PRG) -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -loop 1 -i $< -t 5 -vf "fade=t=in:0:d=1,fade=t=out:st=3:d=1,format=gbrp" -r 25 -vcodec libx264rgb -acodec libopus -b:a 256k $@
 
-clean-%.opus: audio-%.opus
-	$(PRG) -i $< -af "afftdn=nr=12:nf=-80:tn=1" -acodec libopus $@
-
-files-%.txt: title-%.mkv  goals-%.mkv  cut-%.mkv outro-%.mkv
+files-%.txt: title-%.mkv goals-%.mkv clean-%.mkv outro-%.mkv
 	echo "" > $@
 	echo "file '$(word 1,$^)'" >> $@
 	echo "file '$(word 2,$^)'" >> $@
@@ -85,5 +71,20 @@ files-%.txt: title-%.mkv  goals-%.mkv  cut-%.mkv outro-%.mkv
 titles: $(titles)
 
 print-%  : ; @echo $* = $($*)
+
+################################################
+# The following part is used only when recording the screen from the tablet
+################################################
+edit-%.mkv: Screen_Recording-%.mp4
+	$(PRG) -i $< -map 0 -map_metadata 0 -map_chapters 0 -ignore_unknown -filter:v scale=in_range=limited:out_range=limited:flags=neighbor+accurate_rnd+full_chroma_inp+full_chroma_int -filter:a aresample=async=1:min_comp=0.001:min_hard_comp=0.1:first_pts=0 -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range mpeg -vsync cfr -r 25 -c:v libx264 -qp 15 -g 4 -bf 0 -preset medium -movflags +faststart+write_colr -c:a libopus -b:a 640k -max_muxing_queue_size 99999 $@
+
+cropped-%.mkv: edit-%.mkv
+	$(PRG) -i $< -filter:v "crop=1290:920:218:180" -vcodec libx264 -c:a copy  $@
+
+record-%.mkv: cropped-%.mkv
+	$(PRG) -i $< -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1" -vcodec libx264rgb -acodec copy $@
+
+
+
 
 # -*- mode: GNUmakefile;-*-
