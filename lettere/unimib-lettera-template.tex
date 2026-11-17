@@ -10,17 +10,12 @@
 %   subject:   Text for the italicized subject line.
 %              Omitted -> no subject line.
 %
-%   prof:      truthy -> signs as "Prof. Gianluca Della Vedova" followed by
-%              "Full professor of Computer Science / Department of Informatics,
-%              Systems and Communication / University of Milano - Bicocca".
-%              Omitted -> plain name (plus phd/signature lines if set).
-%
-%   phd:       truthy -> adds "Director of the Ph.D. program in Computer Science".
-%
-%   signature: value "phd" -> same Director line as phd.
-%              Omitted -> no Director line.
-%              (prof, phd and signature can be combined; prof always wins
-%              for the professor block.)
+%   signature: phd  -> adds "Director of the Ph.D. program in Computer Science".
+%              prof -> signs as "Prof. Gianluca Della Vedova" followed by
+%                      "Full professor of Computer Science / Department of
+%                      Informatics, Systems and Communication / University of
+%                      Milano - Bicocca".
+%              none (default) -> plain name only.
 %
 \documentclass[11pt,a4paper]{article}
 % Language configuration (English is the default)
@@ -46,7 +41,7 @@ $endif$
 \hypersetup{
     colorlinks=true,
     linkcolor=black,
-    filecolor=black,      
+    filecolor=black,
     urlcolor=black,
 }
 
@@ -60,14 +55,14 @@ $endif$
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 
 
-% Crucial: This pulls the Left Header and Left Footer 2.5cm into the margin, 
+% Crucial: This pulls the Left Header and Left Footer 2.5cm into the margin,
 % allowing the Logo and Footer to sit perfectly to the left of the body text.
 \fancyheadoffset[L]{2.5cm}
 \fancyfootoffset[L]{2.5cm}
 
 % Header Left: Official Logo and Department Name
 \fancyhead[L]{
-        \includegraphics[width=6.2cm]{/home/gianluca/Devel/grafica/lettere/unimib_logo_1.pdf} 
+        \includegraphics[width=6.2cm]{/home/gianluca/Devel/grafica/lettere/unimib-logo-2026.pdf}
 }
 
 % Header Right: Your 4 specific contact rows
@@ -98,11 +93,11 @@ $endif$
 
 % 1. The Date (Automatically uses today's date if not specified in YAML)
 \begin{flushright}
-	$if(date)$
-	$date$
-	$else$
-	\today
-	$endif$
+        $if(date)$
+        $date$
+        $else$
+        \today
+        $endif$
 \end{flushright}
 
 \vspace{1.5em}
@@ -119,24 +114,19 @@ $body$
 % 4. The Dynamic Signature
 
 \vspace{3em}
-\noindent
-$if(prof)$
-Prof.
-$endif$
-Gianluca Della Vedova \newline
-$if(signature)$
-\def\pandocsignature{$signature$}%
+\def\pandocsignature{$if(signature)$$signature$$else$none$endif$}%
 \def\phdsignature{phd}%
+\def\profsignature{prof}%
+\noindent
+\ifx\pandocsignature\profsignature Prof. \fi
+Gianluca Della Vedova%
 \ifx\pandocsignature\phdsignature
-Director of the Ph.D. program in Computer Science\\%
+\\Director of the Ph.D. program in Computer Science%
 \fi
-$endif$
-$if(phd)$
-Director of the Ph.D. program in Computer Science\\
-$endif$
-$if(prof)$
-Full professor of Computer Science\\
+\ifx\pandocsignature\profsignature
+\\Full professor of Computer Science\\
 Department of Informatics, Systems and Communication\\
-University of Milano - Bicocca
-$endif$
+University of Milano - Bicocca%
+\fi
+
 \end{document}
